@@ -101,3 +101,60 @@ deactivate AvatarSaleSC
 
 ```
 
+# Emitted Events Pos Bridge
+
+```plantuml
+title Avatar Emitted events
+skinparam participant {
+BackgroundColor<<L1>> Gold
+BackgroundColor<<L2>>  LimeGreen
+BackgroundColor<<PL1>> Yellow
+BackgroundColor<<PL2>> YellowGreen
+}
+
+
+actor User
+participant AvatarSale <<L2>>
+participant AvatarL2 <<L2>>
+participant AvatarL1 <<L1>>
+participant RootChainManager <<PL1>>
+participant RootChain <<PL1>>
+participant ChildChainManager <<PL2>>
+participant StateReceiver <<PL2>>
+participant MintableERC721Predicate <<PL1>>
+
+group Mint
+User -> AvatarSale: execute()
+AvatarSale -> AvatarL2: batchMint()
+hnote over AvatarL2 #lime: MintedBatch(to, tokenIds)
+end
+
+group Move from L2 to L1
+User -> AvatarL2: withdraw()
+hnote over AvatarL2 #lime: Withdrawn(user, tokenId)
+AvatarL2 -> AvatarL2: burn return txHash
+PolygonServer -> RootChain: submitHeaderBlock(data,sigs)
+hnote over RootChain: NewHeaderBlock(start, end)
+User -> RootChainManager: exit(txHash)
+RootChainManager -> MintableERC721Predicate: exitTokens(sender,rootToken,logRLPList)
+MintableERC721Predicate -> AvatarL1: mint(user, tokenId) 
+hnote over AvatarL1 #lime: Transfer(address(0), to, tokenId);
+end
+
+group Move from L1 to L2
+User -> AvatarL1: approve()
+User -> RootChainManager: depositFor(user,rootToken,depositData)
+RootChainManager -> MintableERC721Predicate: lockTokens(depositor,depositReceiver,rootToken,depositData)
+hnote over MintableERC721Predicate: LockedMintableERC721(depositor, depositReceiver, rootToken, tokenId)
+hnote over MintableERC721Predicate: LockedMintableERC721Batch(depositor, depositReceiver, rootToken, tokenIds)
+MintableERC721Predicate -> AvatarL1: transfer(user, MintableERC721Predicate, tokenId)
+hnote over AvatarL1 #lime: Transfer(user, polygonPredicate, tokenId);
+MintableERC721Predicate -> RootChainManager
+hnote over RootChainManager:  StateSynced(id,contractAddress,data)
+PolygonServer -> StateReceiver: commitState(syncTime,recordBytes)
+StateReceiver -> ChildChainManager: onStateReceive(_, data)
+ChildChainManager -> AvatarL2: deposit(user, depositData)
+hnote over AvatarL2 #lime: Deposit(from, tokenId);
+end
+
+```
