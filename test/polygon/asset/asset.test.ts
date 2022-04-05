@@ -238,6 +238,7 @@ describe('PolygonAsset.sol', function () {
         MockAssetERC1155Tunnel,
         PolygonAssetERC1155Tunnel,
         users,
+        deployer,
         mintAsset,
       } = await setupAssetERC1155Tunnels();
       const tokenId = await mintAsset(users[0].address, 10);
@@ -270,11 +271,21 @@ describe('PolygonAsset.sol', function () {
         ).batchTransferToL1(users[0].address, [tokenId], [10], MOCK_DATA)
       );
 
-      // balance = await AssetERC1155['balanceOf(address,uint256)'](
-      //   users[0].address,
-      //   tokenId
-      // );
-      // expect(balance).to.be.equal(10);
+      // Release on L1
+      const abiCoder = new AbiCoder();
+
+      await deployer.MockAssetERC1155Tunnel.receiveMessage(
+        abiCoder.encode(
+          ['address', 'uint256[]', 'uint256[]', 'bytes'],
+          [users[0].address, [tokenId], [10], MOCK_DATA]
+        )
+      );
+
+      balance = await AssetERC1155['balanceOf(address,uint256)'](
+        users[0].address,
+        tokenId
+      );
+      expect(balance).to.be.equal(10);
     });
 
     //   it('', async function () {

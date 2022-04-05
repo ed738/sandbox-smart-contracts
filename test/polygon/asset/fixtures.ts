@@ -174,7 +174,7 @@ export const setupAssetERC1155Tunnels = deployments.createFixture(
       PolygonAssetERC1155,
     });
 
-    await assetAdmin.AssetERC1155.setPredicate(AssetERC1155Tunnel.address);
+    await assetAdmin.AssetERC1155.setPredicate(MockAssetERC1155Tunnel.address);
 
     await deployer.FxRoot.setFxChild(FxChild.address);
 
