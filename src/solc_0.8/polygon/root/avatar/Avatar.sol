@@ -2,11 +2,11 @@
 // solhint-disable-next-line compiler-version
 pragma solidity 0.8.2;
 
-import {AvatarBase} from "./AvatarBase.sol";
-import {IAvatarMinter} from "../common/interfaces/IAvatarMinter.sol";
-import {Upgradeable} from "../common/BaseWithStorage/Upgradeable.sol";
-import {IMintableERC721} from "../common/interfaces/@maticnetwork/pos-portal/root/RootToken/IMintableERC721.sol";
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import {AvatarBase} from "../../../avatar/AvatarBase.sol";
+import {IAvatarMinter} from "../../../common/interfaces/IAvatarMinter.sol";
+import {Upgradeable} from "../../../common/BaseWithStorage/Upgradeable.sol";
+import {IMintableERC721} from "../../../common/interfaces/@maticnetwork/pos-portal/root/RootToken/IMintableERC721.sol";
 
 /// @title This contract is a erc 721 compatible NFT token that represents an avatar and can be minted by a minter role.
 /// @dev This contract support meta transactions.
