@@ -7,12 +7,13 @@ import {
 import {withSnapshot} from '../../utils';
 import {BigNumberish, Contract} from 'ethers';
 import ERC20Mock from '@openzeppelin/contracts-0.8/build/contracts/ERC20PresetMinterPauser.json';
+import {AddressZero} from '@ethersproject/constants';
+import {expect} from 'chai';
 
 const name = 'AVATARNAME';
 const symbol = 'TSBAV';
 const baseUri = 'http://api';
 export const setupAvatarTest = withSnapshot([], async function () {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const {deployer, upgradeAdmin} = await getNamedAccounts();
   const [
     childChainManager,
@@ -100,7 +101,6 @@ export const mintSandAndApprove = async function (
 };
 
 export const setupAvatarSaleTest = withSnapshot([], async function () {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const {deployer, upgradeAdmin} = await getNamedAccounts();
   const [
     trustedForwarder,
@@ -178,3 +178,134 @@ export const setupAvatarSaleTest = withSnapshot([], async function () {
     dest,
   };
 });
+
+export const setupAvatarTunnelTest = withSnapshot([], async function () {
+  const {deployer} = await getNamedAccounts();
+  const [
+    trustedForwarder,
+    other,
+    fxChildTunnel,
+    dst,
+  ] = await getUnnamedAccounts();
+  await deployments.deploy('ERC721Mintable', {
+    from: deployer,
+    args: ['TestRootERC721', 'TestRootERC721'],
+  });
+  const rootAvatarToken = await ethers.getContract('ERC721Mintable', deployer);
+  const rootAvatarTokenAsOther = await ethers.getContract(
+    'ERC721Mintable',
+    other
+  );
+  await deployments.deploy('FakeFxRoot', {from: deployer});
+  const fxRoot = await ethers.getContract('FakeFxRoot', deployer);
+
+  const checkpointManager = AddressZero;
+  await deployments.deploy('AvatarTunnel', {
+    contract: 'MockAvatarTunnel',
+    from: deployer,
+    args: [
+      checkpointManager,
+      fxRoot.address,
+      rootAvatarToken.address,
+      trustedForwarder,
+    ],
+  });
+  const avatarTunnelAsOwner = await ethers.getContract(
+    'AvatarTunnel',
+    deployer
+  );
+  const avatarTunnelAsOther = await ethers.getContract('AvatarTunnel', other);
+  return {
+    deployer,
+    owner: deployer,
+    other,
+    dst,
+    fxChildTunnel,
+    checkpointManager,
+    fxRoot,
+    rootAvatarToken,
+    rootAvatarTokenAsOther,
+    trustedForwarder,
+    contract: avatarTunnelAsOwner,
+    avatarTunnelAsOwner,
+    avatarTunnelAsOther,
+  };
+});
+
+export const setupPolygonAvatarTunnelTest = withSnapshot([], async function () {
+  const {deployer} = await getNamedAccounts();
+  const [
+    trustedForwarder,
+    other,
+    fxRootTunnel,
+    fxChild,
+    dst,
+  ] = await getUnnamedAccounts();
+  await deployments.deploy('ERC721Mintable', {
+    from: deployer,
+    args: ['TestChildERC721', 'TestChildERC721'],
+  });
+  const childAvatarToken = await ethers.getContract('ERC721Mintable', deployer);
+  const childAvatarTokenAsOther = await ethers.getContract(
+    'ERC721Mintable',
+    other
+  );
+
+  const checkpointManager = AddressZero;
+  await deployments.deploy('PolygonAvatarTunnel', {
+    from: deployer,
+    args: [fxChild, childAvatarToken.address, trustedForwarder],
+  });
+  const avatarTunnelAsOwner = await ethers.getContract(
+    'PolygonAvatarTunnel',
+    deployer
+  );
+  const avatarTunnelAsFxChild = await ethers.getContract(
+    'PolygonAvatarTunnel',
+    fxChild
+  );
+  const avatarTunnelAsOther = await ethers.getContract(
+    'PolygonAvatarTunnel',
+    other
+  );
+  return {
+    deployer,
+    owner: deployer,
+    other,
+    dst,
+    fxRootTunnel,
+    checkpointManager,
+    fxChild,
+    childAvatarToken,
+    childAvatarTokenAsOther,
+    trustedForwarder,
+    contract: avatarTunnelAsOwner,
+    avatarTunnelAsOwner,
+    avatarTunnelAsFxChild,
+    avatarTunnelAsOther,
+  };
+});
+
+export function onlyOwner(
+  setupFunc: () => Promise<{
+    contract: Contract;
+    avatarTunnelAsOwner: Contract;
+    avatarTunnelAsOther: Contract;
+    other: string;
+  }>,
+  setter: string,
+  getter: string
+) {
+  it('only owner can ' + setter, async function () {
+    const fixtures = await setupFunc();
+    expect(await fixtures.contract[getter]()).to.not.be.equal(fixtures.other);
+    await fixtures.avatarTunnelAsOwner[setter](fixtures.other);
+    expect(await fixtures.contract[getter]()).to.be.equal(fixtures.other);
+  });
+  it('other should fail to ' + setter, async function () {
+    const fixtures = await setupFunc();
+    await expect(
+      fixtures.avatarTunnelAsOther[setter](fixtures.other)
+    ).to.be.revertedWith('caller is not the owner');
+  });
+}

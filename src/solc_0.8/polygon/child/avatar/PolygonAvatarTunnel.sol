@@ -80,6 +80,11 @@ contract PolygonAvatarTunnel is FxBaseChildTunnel, IERC721MandatoryTokenReceiver
         childAvatarToken = _childAvatarToken;
     }
 
+    /// @dev we cannot override setFxRootTunnel :(
+    function setRootTunnel(address _fxRootTunnel) external onlyOwner {
+        fxRootTunnel = _fxRootTunnel;
+    }
+
     function _processMessageFromRoot(
         uint256, /* stateId */
         address sender, /* AvatarTunel.sol */

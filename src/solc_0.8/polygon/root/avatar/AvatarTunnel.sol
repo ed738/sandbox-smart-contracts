@@ -86,6 +86,12 @@ contract AvatarTunnel is FxBaseRootTunnel, ERC2771Handler, IERC721MandatoryToken
         rootAvatarToken = _rootAvatarToken;
     }
 
+    // set fxChildTunnel if not set already
+    /// @dev we cannot override setFxChildTunnel :(
+    function setChildTunnel(address _fxChildTunnel) external onlyOwner {
+        fxChildTunnel = _fxChildTunnel;
+    }
+
     /// @dev get a message from L2, aka deposit into L1
     function _processMessageFromChild(bytes memory message) internal override {
         (address depositor, address to, uint256 tokenId) = abi.decode(message, (address, address, uint256));

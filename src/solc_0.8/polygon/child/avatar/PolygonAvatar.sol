@@ -164,6 +164,8 @@ contract PolygonAvatar is AvatarBase, Upgradeable, IChildToken, IAvatarMinter {
         _mint(user, tokenId);
     }
 
+    // TODO: This makes the contract matic-pos portal compatible, but it is kind of risky
+    // TODO: Remove if we only want to use matic-fx portal.
     /// @notice Withdraw tokens
     /// @param tokenId tokenId of the token to be withdrawn
     function _withdraw(uint256 tokenId) internal {
