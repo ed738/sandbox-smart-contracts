@@ -57,12 +57,29 @@ describe('AvatarTunnel.sol', function () {
             [fixtures.other, fixtures.dst, tokenId]
           )
         );
-      // TODO: Check pre/pos balances!!!
+      // Avatar locked in tunnel
+      expect(await fixtures.rootAvatarToken.ownerOf(tokenId)).to.be.equal(
+        fixtures.contract.address
+      );
+    });
+    it('should fail to send to L2 if fxChildTunnel is not set', async function () {
+      const tokenId = 123;
+      const fixtures = await setupAvatarTunnelTest();
+      await expect(
+        fixtures.avatarTunnelAsOther.sendAvatarToL2(fixtures.dst, tokenId)
+      ).to.revertedWith('fxChildTunnel must be set');
+    });
+    it('should fail to send to L2 address ZERO', async function () {
+      const tokenId = 123;
+      const fixtures = await setupAvatarTunnelTest();
+      await fixtures.avatarTunnelAsOwner.setChildTunnel(fixtures.fxChildTunnel);
+      await expect(
+        fixtures.avatarTunnelAsOther.sendAvatarToL2(AddressZero, tokenId)
+      ).to.revertedWith('INVALID_USER');
     });
   });
   describe('receiveAvatarFromL2', function () {
     it('should success to receive from L2', async function () {
-      // abi.encode(_msgSender(), to, tokenId)
       const tokenId = 123;
       const fixtures = await setupAvatarTunnelTest();
       const message = ethers.utils.defaultAbiCoder.encode(
@@ -80,7 +97,20 @@ describe('AvatarTunnel.sol', function () {
           true,
           tokenId
         );
-      // TODO: Check pre/pos balances!!!
+      expect(await fixtures.rootAvatarToken.ownerOf(tokenId)).to.be.equal(
+        fixtures.dst
+      );
+    });
+    it('should fail to receive from L2 if fxChildTunnel is not set', async function () {
+      const tokenId = 123;
+      const fixtures = await setupAvatarTunnelTest();
+      const message = ethers.utils.defaultAbiCoder.encode(
+        ['address', 'address', 'uint256'],
+        [fixtures.other, fixtures.dst, tokenId]
+      );
+      await expect(
+        fixtures.avatarTunnelAsOther.receiveAvatarFromL2(message)
+      ).to.revertedWith('fxChildTunnel must be set');
     });
   });
   describe('meta transactions', function () {});

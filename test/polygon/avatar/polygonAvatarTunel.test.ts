@@ -60,7 +60,16 @@ describe('PolygonAvatarTunnel.sol', function () {
             [fixtures.other, fixtures.dst, tokenId]
           )
         );
-      // TODO: Check pre/pos balances!!!
+      expect(await fixtures.childAvatarToken.ownerOf(tokenId)).to.be.equal(
+        fixtures.contract.address
+      );
+    });
+    it('should fail to send to L1 if destination is ZERO', async function () {
+      const tokenId = 123;
+      const fixtures = await setupPolygonAvatarTunnelTest();
+      await expect(
+        fixtures.avatarTunnelAsOther.sendAvatarToL1(AddressZero, tokenId)
+      ).to.revertedWith('INVALID_USER');
     });
   });
   describe('receiveAvatarFromL1', function () {
@@ -91,7 +100,42 @@ describe('PolygonAvatarTunnel.sol', function () {
           fixtures.dst,
           tokenId
         );
-      // TODO: Check pre/pos balances!!!
+      expect(await fixtures.childAvatarToken.ownerOf(tokenId)).to.be.equal(
+        fixtures.dst
+      );
+    });
+    it('should fail to receive from L1 fxRootTunnel is not set', async function () {
+      // abi.encode(_msgSender(), to, tokenId)
+      const tokenId = 123;
+      const fixtures = await setupPolygonAvatarTunnelTest();
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ['address', 'address', 'uint256'],
+        [fixtures.other, fixtures.dst, tokenId]
+      );
+      await expect(
+        fixtures.avatarTunnelAsFxChild.processMessageFromRoot(
+          123 /* stateId */,
+          fixtures.fxRootTunnel /* rootMessageSender */,
+          data
+        )
+      ).to.revertedWith('fxRootTunnel must be set');
+    });
+    it('should fail to receive from L1 if sender is not fxRootTunnel', async function () {
+      // abi.encode(_msgSender(), to, tokenId)
+      const tokenId = 123;
+      const fixtures = await setupPolygonAvatarTunnelTest();
+      await fixtures.avatarTunnelAsOwner.setRootTunnel(fixtures.fxRootTunnel);
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ['address', 'address', 'uint256'],
+        [fixtures.other, fixtures.dst, tokenId]
+      );
+      await expect(
+        fixtures.avatarTunnelAsFxChild.processMessageFromRoot(
+          123 /* stateId */,
+          fixtures.other /* rootMessageSender */,
+          data
+        )
+      ).to.revertedWith('INVALID_SENDER_FROM_ROOT');
     });
   });
   describe('meta transactions', function () {});

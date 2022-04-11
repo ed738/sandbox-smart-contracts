@@ -9,6 +9,8 @@ import {BigNumberish, Contract} from 'ethers';
 import ERC20Mock from '@openzeppelin/contracts-0.8/build/contracts/ERC20PresetMinterPauser.json';
 import {AddressZero} from '@ethersproject/constants';
 import {expect} from 'chai';
+import {TransactionReceipt} from '@ethersproject/abstract-provider';
+import {TransactionResponse} from '@ethersproject/abstract-provider/src.ts/index';
 
 const name = 'AVATARNAME';
 const symbol = 'TSBAV';
@@ -308,4 +310,130 @@ export function onlyOwner(
       fixtures.avatarTunnelAsOther[setter](fixtures.other)
     ).to.be.revertedWith('caller is not the owner');
   });
+}
+
+export const setupFxAvatarTunnelIntegrationTest = withSnapshot(
+  [],
+  async function () {
+    const {deployer} = await getNamedAccounts();
+    const [
+      upgradeAdmin,
+      trustedForwarder,
+      adminRole,
+      other,
+      minter,
+      checkpointManager,
+      dstRoot,
+      dstChild,
+      dstRoot2,
+      dstChild2,
+    ] = await getUnnamedAccounts();
+    // L1
+    await deployments.deploy('Avatar', {
+      from: deployer,
+      proxy: {
+        owner: upgradeAdmin,
+        proxyContract: 'OptimizedTransparentProxy',
+        execute: {
+          methodName: 'initialize',
+          args: [
+            'L1Avatar',
+            'TSBAV',
+            'http://XXX.YYY',
+            trustedForwarder,
+            adminRole,
+          ],
+        },
+        upgradeIndex: 0,
+      },
+    });
+    const rootAvatarToken = await ethers.getContract('Avatar', deployer);
+    await deployments.deploy('FakeFxRoot', {from: deployer});
+    const fxRoot = await ethers.getContract('FakeFxRoot', deployer);
+    await deployments.deploy('AvatarTunnel', {
+      contract: 'MockAvatarTunnel',
+      from: deployer,
+      args: [
+        checkpointManager,
+        fxRoot.address,
+        rootAvatarToken.address,
+        trustedForwarder,
+      ],
+    });
+    const rootAvatarTunnel = await ethers.getContract('AvatarTunnel');
+    const avatarMinterRole = await deployments.read('Avatar', 'MINTER_ROLE');
+    await deployments.execute(
+      'Avatar',
+      {from: adminRole},
+      'grantRole',
+      avatarMinterRole,
+      rootAvatarTunnel.address
+    );
+    // L2
+    await deployments.deploy('PolygonAvatar', {
+      from: deployer,
+      proxy: {
+        owner: upgradeAdmin,
+        proxyContract: 'OptimizedTransparentProxy',
+        execute: {
+          methodName: 'initialize',
+          args: [
+            'Avatar',
+            'TSBAV',
+            'http://XXX.YYY',
+            trustedForwarder,
+            adminRole,
+          ],
+        },
+      },
+    });
+    const childAvatarToken = await ethers.getContract('PolygonAvatar');
+    await deployments.deploy('FakeFxChild', {from: deployer});
+    const fxChild = await ethers.getContract('FakeFxChild', deployer);
+    await deployments.deploy('PolygonAvatarTunnel', {
+      from: deployer,
+      args: [fxChild.address, childAvatarToken.address, trustedForwarder],
+    });
+    const childAvatarTunnel = await ethers.getContract('PolygonAvatarTunnel');
+
+    // Connect L1 <-> L2
+    await fxRoot.setFxChild(fxChild.address);
+    await childAvatarTunnel.setFxRootTunnel(rootAvatarTunnel.address);
+    await rootAvatarTunnel.setFxChildTunnel(childAvatarTunnel.address);
+
+    return {
+      deployer,
+      trustedForwarder,
+      owner: deployer,
+      other,
+      adminRole,
+      minter,
+      avatarMinterRole,
+      checkpointManager,
+      dstRoot,
+      dstChild,
+      dstRoot2,
+      dstChild2,
+      fxRoot,
+      fxChild,
+      rootAvatarToken,
+      childAvatarToken,
+      rootAvatarTunnel,
+      childAvatarTunnel,
+    };
+  }
+);
+
+export async function getMessageFromTx(tx: TransactionResponse) {
+  const receipt: TransactionReceipt = await tx.wait();
+  const childAvatarTunnel = await ethers.getContract('PolygonAvatarTunnel');
+  const filter = childAvatarTunnel.filters.MessageSent(null);
+  const log = receipt.logs.filter(
+    (x) =>
+      x.address == filter.address &&
+      filter.topics &&
+      x.topics[0] == filter.topics[0]
+  );
+  const desc = childAvatarTunnel.interface.parseLog(log[0]);
+  return desc.args['message'];
 }
