@@ -1,3 +1,4 @@
+/* eslint-disable mocha/no-exports */
 import {
   deployments,
   ethers,
@@ -297,7 +298,7 @@ export function onlyOwner(
   }>,
   setter: string,
   getter: string
-) {
+): void {
   it('only owner can ' + setter, async function () {
     const fixtures = await setupFunc();
     expect(await fixtures.contract[getter]()).to.not.be.equal(fixtures.other);
@@ -424,7 +425,9 @@ export const setupFxAvatarTunnelIntegrationTest = withSnapshot(
   }
 );
 
-export async function getMessageFromTx(tx: TransactionResponse) {
+export async function getMessageFromTx(
+  tx: TransactionResponse
+): Promise<string> {
   const receipt: TransactionReceipt = await tx.wait();
   const childAvatarTunnel = await ethers.getContract('PolygonAvatarTunnel');
   const filter = childAvatarTunnel.filters.MessageSent(null);

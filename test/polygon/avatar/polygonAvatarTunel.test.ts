@@ -2,7 +2,8 @@ import {expect} from 'chai';
 import {onlyOwner, setupPolygonAvatarTunnelTest} from './fixtures';
 import {selector} from '../../utils';
 import {AddressZero} from '@ethersproject/constants';
-import {ethers} from 'ethers';
+import {ethers} from 'hardhat';
+import {solidityPack} from 'ethers/lib/utils';
 
 describe('PolygonAvatarTunnel.sol', function () {
   describe('owner', function () {
@@ -138,7 +139,56 @@ describe('PolygonAvatarTunnel.sol', function () {
       ).to.revertedWith('INVALID_SENDER_FROM_ROOT');
     });
   });
-  describe('meta transactions', function () {});
+  describe('meta transactions', function () {
+    it('should success to send to L1', async function () {
+      const tokenId = 123;
+      const fixtures = await setupPolygonAvatarTunnelTest();
+      await fixtures.childAvatarToken['mint(address,uint256)'](
+        fixtures.other,
+        tokenId
+      );
+      await fixtures.childAvatarTokenAsOther.approve(
+        fixtures.contract.address,
+        tokenId
+      );
+      const contractAsTrustedForwarder = await ethers.getContract(
+        'PolygonAvatarTunnel',
+        fixtures.trustedForwarder
+      );
+      const txData = await contractAsTrustedForwarder.populateTransaction.sendAvatarToL1(
+        fixtures.dst,
+        tokenId
+      );
+      // The msg.sender goes at the end.
+      txData.data = solidityPack(
+        ['bytes', 'address'],
+        [txData.data, fixtures.other]
+      );
+      const tx = await contractAsTrustedForwarder.signer.sendTransaction(
+        txData
+      );
+      await expect(tx)
+        .to.emit(fixtures.avatarTunnelAsOwner, 'AvatarSentToL1')
+        .withArgs(
+          fixtures.childAvatarToken.address,
+          fixtures.other,
+          fixtures.dst,
+          tokenId
+        );
+      // Thie event is proved on L1
+      await expect(tx)
+        .to.emit(fixtures.avatarTunnelAsOwner, 'MessageSent')
+        .withArgs(
+          ethers.utils.defaultAbiCoder.encode(
+            ['address', 'address', 'uint256'],
+            [fixtures.other, fixtures.dst, tokenId]
+          )
+        );
+      expect(await fixtures.childAvatarToken.ownerOf(tokenId)).to.be.equal(
+        fixtures.contract.address
+      );
+    });
+  });
   it('coverage', async function () {
     const fixtures = await setupPolygonAvatarTunnelTest();
     const onERC721Received = 'onERC721Received(address,address,uint256,bytes)';
