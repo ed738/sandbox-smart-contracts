@@ -52,7 +52,7 @@ describe('PolygonAvatarTunnel.sol', function () {
           fixtures.dst,
           tokenId
         );
-      // Thie event is proved on L1
+      // This event will be proved on L1
       await expect(tx)
         .to.emit(fixtures.avatarTunnelAsOwner, 'MessageSent')
         .withArgs(

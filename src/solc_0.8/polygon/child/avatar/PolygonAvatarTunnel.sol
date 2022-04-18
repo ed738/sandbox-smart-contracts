@@ -11,7 +11,7 @@ import {ERC2771Handler} from "../../../common/BaseWithStorage/ERC2771Handler.sol
 import {IERC721MandatoryTokenReceiver} from "../../../common/interfaces/IERC721MandatoryTokenReceiver.sol";
 import {IMintableERC721} from "../../../common/interfaces/@maticnetwork/pos-portal/root/RootToken/IMintableERC721.sol";
 
-/// @title Avatar bridge on L2
+/// @title Avatar Polygon matic-fx bridge on L2
 contract PolygonAvatarTunnel is FxBaseChildTunnel, IERC721MandatoryTokenReceiver, ERC2771Handler, Ownable {
     IERC721 public childAvatarToken;
 
@@ -37,7 +37,11 @@ contract PolygonAvatarTunnel is FxBaseChildTunnel, IERC721MandatoryTokenReceiver
         childAvatarToken = _childAvatarToken;
     }
 
-    /// @dev send token to L1, messages emitted by this contract are accepted by the root tunnel.
+    /**
+     * @dev send token to L1, messages emitted by this contract are proved to the root tunnel.
+     * @param to user that will receive the avatar on L1
+     * @param tokenId id of the token that will be send
+     */
     function sendAvatarToL1(address to, uint256 tokenId) external {
         require(to != address(0), "PolygonAvatarTunnel: INVALID_USER");
         childAvatarToken.safeTransferFrom(_msgSender(), address(this), tokenId);
@@ -76,15 +80,18 @@ contract PolygonAvatarTunnel is FxBaseChildTunnel, IERC721MandatoryTokenReceiver
         _trustedForwarder = trustedForwarder;
     }
 
+    /// @dev Change the address of the child avatar token contract
     function setChildAvatarToken(IERC721 _childAvatarToken) external onlyOwner {
         childAvatarToken = _childAvatarToken;
     }
 
-    /// @dev we cannot override setFxRootTunnel :(
+    /// @dev set the fxRootTunnel address
+    /// @dev we cannot override setFxRootTunnel, we must wait for the latest matic-fx release
     function setRootTunnel(address _fxRootTunnel) external onlyOwner {
         fxRootTunnel = _fxRootTunnel;
     }
 
+    /// @dev get a message from L1, transfer the avatar to the user
     function _processMessageFromRoot(
         uint256, /* stateId */
         address sender, /* AvatarTunel.sol */

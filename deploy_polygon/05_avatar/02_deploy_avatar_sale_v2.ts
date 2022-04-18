@@ -10,7 +10,6 @@ const func: DeployFunction = async function (
   await deployments.deploy('PolygonAvatarSale', {
     from: deployer,
     log: true,
-    skipIfAlreadyDeployed: true,
     proxy: {
       owner: upgradeAdmin,
       proxyContract: 'OptimizedTransparentProxy',

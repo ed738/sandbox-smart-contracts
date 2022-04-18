@@ -23,14 +23,20 @@ export const getAvatarContracts = async (
         'Avatar',
         l1Accounts.deployer
       ),
-      mintableERC721Predicate: await getContractFromDeployment(
+      avatarTunnel: await getContractFromDeployment(
         l1,
-        'MINTABLE_ERC721_PREDICATE',
+        'AvatarTunnel',
         l1Accounts.deployer
       ),
       trustedForwarder: await getContractFromDeployment(
         l1,
         'TRUSTED_FORWARDER'
+      ),
+      fxRoot: await getContractFromDeployment(l1, 'FXROOT'),
+      checkPointManager: await getContractFromDeployment(
+        l1,
+        'CHECKPOINTMANAGER',
+        l1Accounts.deployer
       ),
     },
     l2: {
@@ -38,6 +44,11 @@ export const getAvatarContracts = async (
       avatar: await getContractFromDeployment(
         l2,
         'PolygonAvatar',
+        l2Accounts.deployer
+      ),
+      avatarTunnel: await getContractFromDeployment(
+        l2,
+        'PolygonAvatarTunnel',
         l2Accounts.deployer
       ),
       sale: await getContractFromDeployment(
@@ -56,6 +67,11 @@ export const getAvatarContracts = async (
       childChainManager: await getContractFromDeployment(
         l2,
         'CHILD_CHAIN_MANAGER',
+        l2Accounts.deployer
+      ),
+      fxChild: await getContractFromDeployment(
+        l2,
+        'FXCHILD',
         l2Accounts.deployer
       ),
     },

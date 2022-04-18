@@ -10,7 +10,7 @@ const func: DeployFunction = async function (
   const {sandAdmin} = await getNamedAccounts();
   const adminRole = sandAdmin;
 
-  const predicate = await deployments.get('MINTABLE_ERC721_PREDICATE');
+  const predicate = await deployments.get('AvatarTunnel');
 
   // Grant roles.
   const minterRole = await deployments.read('Avatar', 'MINTER_ROLE');
@@ -25,5 +25,5 @@ const func: DeployFunction = async function (
 
 export default func;
 func.tags = ['Avatar', 'Avatar_setup'];
-func.dependencies = ['Avatar_deploy', 'MINTABLE_ERC721_PREDICATE'];
+func.dependencies = ['AvatarTunnel_deploy'];
 func.skip = skipUnlessTestnet;

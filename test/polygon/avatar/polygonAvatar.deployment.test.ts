@@ -1,15 +1,22 @@
-import hre from 'hardhat';
+import hre, {ethers} from 'hardhat';
 import {expect} from 'chai';
 import {toWei, withSnapshot} from '../../utils';
 import {BigNumber} from 'ethers';
-import {AddressZero} from '@ethersproject/constants';
 import {getContractFromDeployment} from '../../../utils/companionNetwork';
 import {defaultAbiCoder} from 'ethers/lib/utils';
 import {avatarSaleSignature} from '../../common/signatures';
 import {getAvatarContracts} from '../../common/fixtures/avatar';
+import {getMessageLogFromTx} from './fixtures';
+import {Log} from '@ethersproject/abstract-provider/src.ts/index';
 
 const deployAvatar = withSnapshot(
-  ['Avatar', 'PolygonAvatar', 'PolygonAvatarSale', 'MINTABLE_ERC721_PREDICATE'],
+  [
+    'Avatar',
+    'PolygonAvatar',
+    'PolygonAvatarSale',
+    'AvatarTunnel',
+    'PolygonAvatarTunnel',
+  ],
   async () => {
     return await getAvatarContracts(
       hre.companionNetworks['l1'],
@@ -40,22 +47,10 @@ describe('PolygonAvatar - Avatar deployment test', function () {
     it('minter', async function () {
       const minterRole = await this.l1.avatar.MINTER_ROLE();
       expect(
-        await this.l1.avatar.hasRole(
-          minterRole,
-          this.l1.mintableERC721Predicate.address
-        )
+        await this.l1.avatar.hasRole(minterRole, this.l1.avatarTunnel.address)
       ).to.be.true;
       expect(await this.l2.avatar.hasRole(minterRole, this.l2.sale.address)).to
         .be.true;
-    });
-    it('child chain manager', async function () {
-      const childChainManagerRole = await this.l2.avatar.CHILD_MANAGER_ROLE();
-      expect(
-        await this.l2.avatar.hasRole(
-          childChainManagerRole,
-          this.l2.childChainManager.address
-        )
-      ).to.be.true;
     });
     it('trusted forwarder', async function () {
       expect(await this.l1.avatar.getTrustedForwarder()).to.be.equal(
@@ -91,13 +86,23 @@ describe('PolygonAvatar - Avatar deployment test', function () {
       this.tokenId = BigNumber.from(0x123);
       this.price = toWei(5);
       this.polygonAvatarAsBuyer = await getContractFromDeployment(
-        this.l1Net,
+        this.l2Net,
         'PolygonAvatar',
+        this.buyer
+      );
+      this.polygonAvatarTunnelAsBuyer = await getContractFromDeployment(
+        this.l2Net,
+        'PolygonAvatarTunnel',
         this.buyer
       );
       this.avatarAsBuyer = await getContractFromDeployment(
         this.l1Net,
         'Avatar',
+        this.buyer
+      );
+      this.avatarTunnelAsBuyer = await getContractFromDeployment(
+        this.l1Net,
+        'AvatarTunnel',
         this.buyer
       );
     });
@@ -152,89 +157,282 @@ describe('PolygonAvatar - Avatar deployment test', function () {
       );
     });
     it('now can withdraw to L1', async function () {
-      await expect(this.polygonAvatarAsBuyer.withdraw(this.tokenId))
-        .to.emit(this.polygonAvatarAsBuyer, 'Transfer')
-        .withArgs(this.buyer, AddressZero, this.tokenId);
-
+      await this.polygonAvatarAsBuyer.approve(
+        this.l2.avatarTunnel.address,
+        this.tokenId
+      );
+      const tx = await this.polygonAvatarTunnelAsBuyer.sendAvatarToL1(
+        this.buyer,
+        this.tokenId
+      );
+      await expect(tx)
+        .to.emit(this.l2.avatarTunnel, 'AvatarSentToL1')
+        .withArgs(this.l2.avatar.address, this.buyer, this.buyer, this.tokenId);
+      // This event will be proved on L1
+      await expect(tx)
+        .to.emit(this.l2.avatarTunnel, 'MessageSent')
+        .withArgs(
+          ethers.utils.defaultAbiCoder.encode(
+            ['address', 'address', 'uint256'],
+            [this.buyer, this.buyer, this.tokenId]
+          )
+        );
       await expect(this.l1.avatar.ownerOf(this.tokenId)).to.revertedWith(
         'ERC721: owner query for nonexistent token'
       );
-      await expect(this.l2.avatar.ownerOf(this.tokenId)).to.revertedWith(
-        'ERC721: owner query for nonexistent token'
+      // locked in the tunnel
+      expect(await this.l2.avatar.ownerOf(this.tokenId)).to.be.equal(
+        this.l2.avatarTunnel.address
       );
     });
-    it('With the emission of the Transfer event, the user will be able to call the predicate exitToken', async function () {
-      await this.l1.mintableERC721Predicate[
-        'exitTokens(address,address,uint256)'
-      ](this.l1.avatar.address, this.buyer, this.tokenId);
+    it('With the emission of the MessageSent event, the user will be able to call the tunnel on L1', async function () {
+      const message = ethers.utils.defaultAbiCoder.encode(
+        ['address', 'address', 'uint256'],
+        [this.buyer, this.buyer, this.tokenId]
+      );
+
+      // This uses the MockAvatarTunnel
+      await this.l1.avatarTunnel.processMessageFromChild(message);
       expect(await this.l1.avatar.ownerOf(this.tokenId)).to.be.equal(
         this.buyer
       );
-      await expect(this.l2.avatar.ownerOf(this.tokenId)).to.revertedWith(
-        'ERC721: owner query for nonexistent token'
+      // locked in the tunnel
+      expect(await this.l2.avatar.ownerOf(this.tokenId)).to.be.equal(
+        this.l2.avatarTunnel.address
       );
     });
-    it('now can lock the token in the predicate again', async function () {
+    it('now can lock the token in the tunnel and send it to L2', async function () {
       await this.avatarAsBuyer.approve(
-        this.l1.mintableERC721Predicate.address,
+        this.l1.avatarTunnel.address,
         this.tokenId
       );
-      await expect(
-        this.l1.mintableERC721Predicate.lockTokens(
-          this.buyer,
-          this.avatarAsBuyer.address,
-          defaultAbiCoder.encode(['uint256'], [this.tokenId])
-        )
-      )
-        .to.emit(this.avatarAsBuyer, 'Transfer')
-        .withArgs(
-          this.buyer,
-          this.l1.mintableERC721Predicate.address,
-          this.tokenId
-        );
-      expect(await this.l1.avatar.ownerOf(this.tokenId)).to.be.equal(
-        this.l1.mintableERC721Predicate.address
+      const tx = await this.avatarTunnelAsBuyer.sendAvatarToL2(
+        this.buyer,
+        this.tokenId
       );
-      await expect(this.l2.avatar.ownerOf(this.tokenId)).to.revertedWith(
-        'ERC721: owner query for nonexistent token'
+      await expect(tx)
+        .to.emit(this.l1.avatarTunnel, 'AvatarSentToL2')
+        .withArgs(this.l1.avatar.address, this.buyer, this.buyer, this.tokenId);
+      await expect(tx)
+        .to.emit(this.l1.fxRoot, 'SendingMessageToChild')
+        .withArgs(
+          this.l2.avatarTunnel.address,
+          ethers.utils.defaultAbiCoder.encode(
+            ['address', 'address', 'uint256'],
+            [this.buyer, this.buyer, this.tokenId]
+          )
+        );
+      // locked in the tunnel
+      expect(await this.l1.avatar.ownerOf(this.tokenId)).to.be.equal(
+        this.l1.avatarTunnel.address
+      );
+      // locked in the tunnel
+      expect(await this.l2.avatar.ownerOf(this.tokenId)).to.be.equal(
+        this.l2.avatarTunnel.address
       );
     });
-    it('With the emission of the Transfer event, the polygon manager will call the chain manager on L2', async function () {
-      await this.l2.childChainManager.syncDeposit(
-        this.l2.avatar.address,
-        this.buyer,
-        defaultAbiCoder.encode(['uint256'], [this.tokenId])
+    it('With the emission of the SendingMessageToChild event, the polygon manager will call the tunnel on L2', async function () {
+      const syncData = ethers.utils.defaultAbiCoder.encode(
+        ['address', 'address', 'uint256'],
+        [this.buyer, this.buyer, this.tokenId]
       );
-      // Locked in L1
+      // This uses FakeFxChild
+      await this.l2.fxChild.onStateReceive(
+        12 /* stateId */,
+        this.l2.avatarTunnel.address,
+        this.l1.avatarTunnel.address,
+        syncData
+      );
+      // locked in the tunnel
       expect(await this.l1.avatar.ownerOf(this.tokenId)).to.be.equal(
-        this.l1.mintableERC721Predicate.address
+        this.l1.avatarTunnel.address
       );
       expect(await this.l2.avatar.ownerOf(this.tokenId)).to.be.equal(
         this.buyer
       );
     });
-    it('Now if we withdraw to L1 instead of minting the predicate will do a transfer', async function () {
-      await expect(this.polygonAvatarAsBuyer.withdraw(this.tokenId))
-        .to.emit(this.polygonAvatarAsBuyer, 'Transfer')
-        .withArgs(this.buyer, AddressZero, this.tokenId);
-
+    it('Now if we withdraw to L1 instead of minting the tunnel will do a transfer', async function () {
+      await this.polygonAvatarAsBuyer.approve(
+        this.l2.avatarTunnel.address,
+        this.tokenId
+      );
+      await this.polygonAvatarTunnelAsBuyer.sendAvatarToL1(
+        this.buyer,
+        this.tokenId
+      );
       // Locked in L1
       expect(await this.l1.avatar.ownerOf(this.tokenId)).to.be.equal(
-        this.l1.mintableERC721Predicate.address
+        this.l1.avatarTunnel.address
       );
-      await expect(this.l2.avatar.ownerOf(this.tokenId)).to.revertedWith(
-        'ERC721: owner query for nonexistent token'
+      // locked in L2
+      expect(await this.l2.avatar.ownerOf(this.tokenId)).to.be.equal(
+        this.l2.avatarTunnel.address
       );
 
-      await this.l1.mintableERC721Predicate[
-        'exitTokens(address,address,uint256)'
-      ](this.l1.avatar.address, this.buyer, this.tokenId);
+      const message = ethers.utils.defaultAbiCoder.encode(
+        ['address', 'address', 'uint256'],
+        [this.buyer, this.buyer, this.tokenId]
+      );
+      // This uses the MockAvatarTunnel
+      await this.l1.avatarTunnel.processMessageFromChild(message);
 
       expect(await this.l1.avatar.ownerOf(this.tokenId)).to.be.equal(
         this.buyer
       );
-      await expect(this.l2.avatar.ownerOf(this.tokenId)).to.revertedWith(
-        'ERC721: owner query for nonexistent token'
+      // locked in L2
+      expect(await this.l2.avatar.ownerOf(this.tokenId)).to.be.equal(
+        this.l2.avatarTunnel.address
+      );
+    });
+  });
+
+  describe('buy and withdraw to L1 using the matic-fx api and a fake checkpoint manager', function () {
+    before(async function () {
+      const {l1Net, l2Net, l1, l2, buyer} = await deployAvatar();
+      this.l1Net = l1Net;
+      this.l2Net = l2Net;
+      this.l1 = l1;
+      this.l2 = l2;
+      this.buyer = buyer;
+      this.tokenId = BigNumber.from(0x123);
+      this.price = toWei(5);
+      this.polygonAvatarAsBuyer = await getContractFromDeployment(
+        this.l2Net,
+        'PolygonAvatar',
+        this.buyer
+      );
+      this.polygonAvatarTunnelAsBuyer = await getContractFromDeployment(
+        this.l2Net,
+        'PolygonAvatarTunnel',
+        this.buyer
+      );
+      this.avatarAsBuyer = await getContractFromDeployment(
+        this.l1Net,
+        'Avatar',
+        this.buyer
+      );
+      this.avatarTunnelAsBuyer = await getContractFromDeployment(
+        this.l1Net,
+        'AvatarTunnel',
+        this.buyer
+      );
+    });
+    it('mint sand, and buy an avatar', async function () {
+      const sandToken = await getContractFromDeployment(
+        this.l2Net,
+        'PolygonSand'
+      );
+      await this.l2.childChainManager.callSandDeposit(
+        sandToken.address,
+        this.buyer,
+        defaultAbiCoder.encode(['uint256'], [this.price])
+      );
+      const sandTokenAsBuyer = await getContractFromDeployment(
+        this.l2Net,
+        'PolygonSand',
+        this.buyer
+      );
+      const polygonAvatarSaleAsBuyer = await getContractFromDeployment(
+        this.l2Net,
+        'PolygonAvatarSale',
+        this.buyer
+      );
+      await sandTokenAsBuyer.approve(this.l2.sale.address, this.price);
+      const {v, r, s} = await avatarSaleSignature(
+        this.l2.sale,
+        this.l2.backendAuthWallet,
+        this.buyer,
+        [this.tokenId],
+        this.l2.sandboxAccount,
+        this.price,
+        this.l2.backendAuthEtherWallet.privateKey
+      );
+
+      await polygonAvatarSaleAsBuyer.execute(
+        v,
+        r,
+        s,
+        this.buyer,
+        [this.tokenId],
+        this.l2.sandboxAccount,
+        this.price
+      );
+    });
+    it('now can withdraw to L1', async function () {
+      await this.polygonAvatarAsBuyer.approve(
+        this.l2.avatarTunnel.address,
+        this.tokenId
+      );
+      const tx = await this.polygonAvatarTunnelAsBuyer.sendAvatarToL1(
+        this.buyer,
+        this.tokenId
+      );
+      const receipt = await tx.wait();
+      this.receipt = receipt;
+      this.messageLog = await getMessageLogFromTx(
+        this.l2.avatarTunnel,
+        receipt
+      );
+    });
+    it('With the emission of the MessageSent event, the user will be able to call the tunnel on L1', async function () {
+      // receipt proof
+      const receipt = ethers.utils.RLP.encode([
+        '0x42',
+        '0x42',
+        '0x42',
+        this.receipt.logs.map((x: Log) => [x.address, x.topics, x.data]),
+      ]); // Receipt memory receipt
+      const receiptData = ['0x11', receipt];
+      const receiptRoot = ethers.utils.keccak256(
+        ethers.utils.RLP.encode(receiptData)
+      ); // bytes32
+      const receiptProof = [[receiptData]]; // bytes memory, parent nodes
+      const branchMaskUint = '0x11'; // uint256, encodedPath
+      const receiptLogIndex = ethers.utils.hexlify(this.messageLog.logIndex); // uint256
+
+      // Block proof
+      const blockNumber = '0x42';
+      const blockTime = '0x42';
+      const txRoot = ethers.utils.keccak256('0x42'); // bytes32
+      const blockProof = ethers.utils.keccak256(
+        defaultAbiCoder.encode(
+          ['uint256', 'uint256', 'bytes32', 'bytes32'],
+          [blockNumber, blockTime, txRoot, receiptRoot]
+        )
+      );
+      const headerRoot = ethers.utils.keccak256(
+        defaultAbiCoder.encode(['bytes32', 'bytes32'], [blockProof, blockProof])
+      );
+      await this.l1.checkPointManager.setCheckpoint(
+        headerRoot,
+        blockNumber,
+        1000,
+        blockTime
+      );
+      // setCheckpoint increment the header by 1
+      const headerNumber = '0x01'; // uint256
+
+      const inputData = ethers.utils.RLP.encode([
+        headerNumber,
+        blockProof,
+        blockNumber,
+        blockTime,
+        txRoot,
+        receiptRoot,
+        receipt,
+        receiptProof,
+        branchMaskUint,
+        receiptLogIndex,
+      ]);
+
+      // This uses the MockAvatarTunnel
+      await this.l1.avatarTunnel.receiveAvatarFromL2(inputData);
+      expect(await this.l1.avatar.ownerOf(this.tokenId)).to.be.equal(
+        this.buyer
+      );
+      // locked in the tunnel
+      expect(await this.l2.avatar.ownerOf(this.tokenId)).to.be.equal(
+        this.l2.avatarTunnel.address
       );
     });
   });

@@ -80,7 +80,7 @@ describe('AvatarTunnel.sol', function () {
     });
   });
   describe('receiveAvatarFromL2', function () {
-    it('should success to receive from L2', async function () {
+    it('should success to receive from L2 using Mock', async function () {
       const tokenId = 123;
       const fixtures = await setupAvatarTunnelTest();
       const message = ethers.utils.defaultAbiCoder.encode(

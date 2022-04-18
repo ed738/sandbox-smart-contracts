@@ -11,7 +11,10 @@ import ERC20Mock from '@openzeppelin/contracts-0.8/build/contracts/ERC20PresetMi
 import {AddressZero} from '@ethersproject/constants';
 import {expect} from 'chai';
 import {TransactionReceipt} from '@ethersproject/abstract-provider';
-import {TransactionResponse} from '@ethersproject/abstract-provider/src.ts/index';
+import {
+  Log,
+  TransactionResponse,
+} from '@ethersproject/abstract-provider/src.ts/index';
 
 const name = 'AVATARNAME';
 const symbol = 'TSBAV';
@@ -425,11 +428,10 @@ export const setupFxAvatarTunnelIntegrationTest = withSnapshot(
   }
 );
 
-export async function getMessageFromTx(
-  tx: TransactionResponse
-): Promise<string> {
-  const receipt: TransactionReceipt = await tx.wait();
-  const childAvatarTunnel = await ethers.getContract('PolygonAvatarTunnel');
+export async function getMessageLogFromTx(
+  childAvatarTunnel: Contract,
+  receipt: TransactionReceipt
+): Promise<Log> {
   const filter = childAvatarTunnel.filters.MessageSent(null);
   const log = receipt.logs.filter(
     (x) =>
@@ -437,6 +439,15 @@ export async function getMessageFromTx(
       filter.topics &&
       x.topics[0] == filter.topics[0]
   );
-  const desc = childAvatarTunnel.interface.parseLog(log[0]);
+  return log[0];
+}
+
+export async function getMessageFromTx(
+  tx: TransactionResponse
+): Promise<string> {
+  const childAvatarTunnel = await ethers.getContract('PolygonAvatarTunnel');
+  const receipt: TransactionReceipt = await tx.wait();
+  const log = await getMessageLogFromTx(childAvatarTunnel, receipt);
+  const desc = childAvatarTunnel.interface.parseLog(log);
   return desc.args['message'];
 }

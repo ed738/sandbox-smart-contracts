@@ -10,7 +10,7 @@ import {ERC2771Handler} from "../../../common/BaseWithStorage/ERC2771Handler.sol
 import {IERC721MandatoryTokenReceiver} from "../../../common/interfaces/IERC721MandatoryTokenReceiver.sol";
 import {IMintableERC721} from "../../../common/interfaces/@maticnetwork/pos-portal/root/RootToken/IMintableERC721.sol";
 
-/// @title Avatar Polygon bridge on L1
+/// @title Avatar Polygon matic-fx bridge on L1
 /// @dev on matic-pos terms a mix of RootChainManager + MintableERC721Predicate
 contract AvatarTunnel is FxBaseRootTunnel, ERC2771Handler, IERC721MandatoryTokenReceiver, Ownable {
     IMintableERC721 public rootAvatarToken;
@@ -34,7 +34,12 @@ contract AvatarTunnel is FxBaseRootTunnel, ERC2771Handler, IERC721MandatoryToken
         rootAvatarToken = _rootAvatarToken;
     }
 
-    /// @dev send token to L2, message is sent specifically to fxChildTunnel
+    /**
+     * @dev send token to L2, message is sent specifically to fxChildTunnel
+     * @dev an event is emitted and detected by the matic POS bridge that calls the tunnel on L2
+     * @param to user that will receive the avatar on L2
+     * @param tokenId id of the token that will be send
+     */
     function sendAvatarToL2(address to, uint256 tokenId) external {
         require(fxChildTunnel != address(0), "AvatarTunnel: fxChildTunnel must be set");
         require(to != address(0), "AvatarTunnel: INVALID_USER");
@@ -44,7 +49,10 @@ contract AvatarTunnel is FxBaseRootTunnel, ERC2771Handler, IERC721MandatoryToken
         emit AvatarSentToL2(rootAvatarToken, _msgSender(), to, tokenId);
     }
 
-    /// @dev receive token from L2, event must be emitted by fxChildTunnel
+    /**
+     * @dev receive token from L2, event must be emitted by fxChildTunnel
+     * @param inputData an encoded prove that the token was locked on L2
+     */
     function receiveAvatarFromL2(bytes memory inputData) external {
         require(fxChildTunnel != address(0), "AvatarTunnel: fxChildTunnel must be set");
         bytes memory message = _validateAndExtractMessage(inputData);
@@ -82,17 +90,19 @@ contract AvatarTunnel is FxBaseRootTunnel, ERC2771Handler, IERC721MandatoryToken
         _trustedForwarder = trustedForwarder;
     }
 
+    /// @dev Change the address of the root token
+    /// @param _rootAvatarToken the address of the avatar token contract
     function setRootAvatarToken(IMintableERC721 _rootAvatarToken) external onlyOwner {
         rootAvatarToken = _rootAvatarToken;
     }
 
-    // set fxChildTunnel if not set already
-    /// @dev we cannot override setFxChildTunnel :(
+    /// @dev set fxChildTunnel if not set already
+    /// @dev we cannot override setFxChildTunnel, we must wait for the latest matic-fx release
     function setChildTunnel(address _fxChildTunnel) external onlyOwner {
         fxChildTunnel = _fxChildTunnel;
     }
 
-    /// @dev get a message from L2, aka deposit into L1
+    /// @dev get a message from L2, aka transfer if locked or mint into L1
     function _processMessageFromChild(bytes memory message) internal override {
         (address depositor, address to, uint256 tokenId) = abi.decode(message, (address, address, uint256));
         // Transfer or mint
