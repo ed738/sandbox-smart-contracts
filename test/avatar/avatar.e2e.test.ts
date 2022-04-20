@@ -6,8 +6,8 @@ describe('@skip-on-coverage @e2e @l1 Avatar', function () {
   describe('roles', function () {
     before(async function () {
       const {l1, buyer} = await getAvatarContracts(
-        hre,
-        hre.companionNetworks['l2']
+        hre.companionNetworks['l1'] ? hre.companionNetworks['l1'] : hre,
+        hre.companionNetworks['l2'] ? hre.companionNetworks['l2'] : hre
       );
       this.l1 = l1;
       this.buyer = buyer;
@@ -20,10 +20,7 @@ describe('@skip-on-coverage @e2e @l1 Avatar', function () {
     it('minter', async function () {
       const minterRole = await this.l1.avatar.MINTER_ROLE();
       expect(
-        await this.l1.avatar.hasRole(
-          minterRole,
-          this.l1.mintableERC721Predicate.address
-        )
+        await this.l1.avatar.hasRole(minterRole, this.l1.avatarTunnel.address)
       ).to.be.true;
     });
 

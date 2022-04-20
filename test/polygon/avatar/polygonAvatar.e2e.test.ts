@@ -5,8 +5,8 @@ import {getAvatarContracts} from '../../common/fixtures/avatar';
 describe('@skip-on-coverage @e2e @l2 polygon Avatar', function () {
   before(async function () {
     const {l2, buyer} = await getAvatarContracts(
-      hre.companionNetworks['l1'],
-      hre
+      hre.companionNetworks['l1'] ? hre.companionNetworks['l1'] : hre,
+      hre.companionNetworks['l2'] ? hre.companionNetworks['l2'] : hre
     );
     this.l2 = l2;
     this.buyer = buyer;
@@ -23,15 +23,6 @@ describe('@skip-on-coverage @e2e @l2 polygon Avatar', function () {
       const minterRole = await this.l2.avatar.MINTER_ROLE();
       expect(await this.l2.avatar.hasRole(minterRole, this.l2.sale.address)).to
         .be.true;
-    });
-    it('child chain manager', async function () {
-      const childChainManagerRole = await this.l2.avatar.CHILD_MANAGER_ROLE();
-      expect(
-        await this.l2.avatar.hasRole(
-          childChainManagerRole,
-          this.l2.childChainManager.address
-        )
-      ).to.be.true;
     });
     it('trusted forwarder', async function () {
       expect(await this.l2.avatar.getTrustedForwarder()).to.be.equal(
